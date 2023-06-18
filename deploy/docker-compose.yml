@@ -9,6 +9,7 @@ configs:
 services:
   postgres:
     image: postgres:13.3
+    container_name: ws-postgres
     environment:
       POSTGRES_DB: "water-spots"
       POSTGRES_USER: "pguser"
@@ -18,7 +19,7 @@ services:
   
   pgadmin:
     image: dpage/pgadmin4
-    container_name: pgadmin4_container
+    container_name: ws-pgadmin4
     restart: always
     ports:
       - "5050:80"
@@ -30,6 +31,7 @@ services:
 
   postgres-exporter:
     image: wrouesnel/postgres_exporter:latest
+    container_name: ws-pg-exporter
     configs:
       - source: postgres_exporter_config
         target: /etc/postgres_exporter/queries.yaml
@@ -44,8 +46,14 @@ services:
 
   rabbitmq:
     image: rabbitmq:3.10.7-management
+    container_name: ws-rabbitmq
     restart: always
     hostname: rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 50s
+      retries: 3
     environment:
       - RABBITMQ_DEFAULT_USER=rmuser
       - RABBITMQ_DEFAULT_PASS=rmpassword
@@ -68,20 +76,43 @@ services:
       - RMQPASSWORD=${RMQPASSWORD:-rmpassword}
       - RMQHOST=${RMQHOST:-rabbitmq}
       - RMQPORT=${RMQPORT:-5672}
+      - RMQUEUE=${RMQUEUE:-water-spots}
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  ws-consumer:
+    build:
+      context: ../water-spot-consumer/.
+    container_name: ws-consumer
+    ports:
+      - 8015:8080
+    environment:
+      - RMQUSER=${RMQUSER:-rmconsumer}
+      - RMQPASSWORD=${RMQPASSWORD:- }
+      - RMQHOST=${RMQHOST:-rabbitmq}
+      - RMQPORT=${RMQPORT:-5672}
+      - RMQUEUE=${RMQUEUE:-water-spots}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     deploy:
       restart_policy:
         condition: on-failure
 
   prometheus:
     image: prom/prometheus
+    container_name: ws-prometheus
     ports:
       - 9090:9090
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
   grafana:
+    container_name: ws-grafana
     image: grafana/grafana
     ports:
       - 3000:3000
