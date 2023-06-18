@@ -56,6 +56,24 @@ services:
     volumes:
       - ./rabbitmq:/var/lib/rabbitmq
 
+  ws-producer:
+    image: ws-producer:latest
+    build:
+      context: ../water-spot-producer/.
+    container_name: ws-producer
+    ports:
+      - 80:8080
+    environment:
+      - RMQUSER=${RMQUSER:-rmuser}
+      - RMQPASSWORD=${RMQPASSWORD:-rmpassword}
+      - RMQHOST=${RMQHOST:-rabbitmq}
+      - RMQPORT=${RMQPORT:-5672}
+    depends_on:
+      - rabbitmq
+    deploy:
+      restart_policy:
+        condition: on-failure
+
   prometheus:
     image: prom/prometheus
     ports:
